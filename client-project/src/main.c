@@ -26,12 +26,7 @@
 #define BUFFMAX 255
 #define MAX_CITY_LEN 64
 
-// Struttura risposta per deserializzazione
-/*struct response {
-    unsigned int status;
-    char type;
-    float value;
-};*/
+
 
 void clearwinsock() {
 #if defined _WIN32
@@ -48,7 +43,7 @@ int main(void) {
     }
 #endif
 
-    // 1. INPUT SERVER E PORTA (Struttura richiesta)
+    
     char input_buffer[BUFFMAX];
     memset(input_buffer, 0, BUFFMAX);
     printf("Inserire server e porta (formato servername:port): ");
@@ -70,17 +65,17 @@ int main(void) {
         return -1;
     }
 
-    // Risoluzione IP e Reverse DNS per output richiesto
+    
     struct in_addr addr = *(struct in_addr *)host->h_addr;
     char *ip_str = inet_ntoa(addr);
     struct hostent *rev_host = gethostbyaddr((const char*)&addr, sizeof(addr), AF_INET);
     char *canonical_name = (rev_host) ? rev_host->h_name : name;
 
-    // 2. INPUT RICHIESTA METEO (formato "t bari")
+   
     printf("Inserire la richiesta meteo (formato \"tipo citta'\", es: t bari): ");
     char req_buffer[BUFFMAX];
     fgets(req_buffer, BUFFMAX, stdin);
-    req_buffer[strcspn(req_buffer, "\n")] = 0; // rimuove newline
+    req_buffer[strcspn(req_buffer, "\n")] = 0; 
 
     char type = req_buffer[0];
     char *city_part = strchr(req_buffer, ' ');
@@ -90,15 +85,14 @@ int main(void) {
         return -1;
     }
     char *city = city_part + 1;
-    while(isspace(*city)) city++; // salta spazi multipli
-
+    while(isspace(*city)) city++; 
     if (strlen(city) >= MAX_CITY_LEN) {
         printf("Errore: nome città troppo lungo.\n");
         clearwinsock();
         return -1;
     }
 
-    // 3. CREAZIONE SOCKET E INVIO
+    
     int my_socket;
     if ((my_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
         printf("Errore creazione socket\n");
@@ -112,7 +106,7 @@ int main(void) {
     server_address.sin_port = htons(port);
     server_address.sin_addr = addr;
 
-    // SERIALIZZAZIONE MANUALE (Richiesta)
+    
     char send_buf[1 + MAX_CITY_LEN];
     memset(send_buf, 0, sizeof(send_buf));
     send_buf[0] = type;
@@ -121,13 +115,12 @@ int main(void) {
     sendto(my_socket, send_buf, 1 + strlen(city) + 1, 0, 
            (struct sockaddr *)&server_address, sizeof(server_address));
 
-    // 4. RICEZIONE E DESERIALIZZAZIONE
     char recv_buf[512];
     unsigned int srv_size = sizeof(server_address);
     int n = recvfrom(my_socket, recv_buf, 512, 0, (struct sockaddr *)&server_address, &srv_size);
 
     if (n >= 9) {
-        // Deserializzazione manuale (Response)
+        
         uint32_t net_status, net_val;
         memcpy(&net_status, recv_buf, 4);
         uint32_t status = ntohl(net_status);
@@ -139,13 +132,13 @@ int main(void) {
         float val;
         memcpy(&val, &net_val, 4);
 
-        // Formattazione output richiesta
+        
         printf("Ricevuto risultato dal server %s (ip %s). ", canonical_name, ip_str);
 
         if (status == 1) printf("Città non disponibile\n");
         else if (status == 2) printf("Richiesta non valida\n");
         else {
-            city[0] = toupper(city[0]); // Capitalizzazione prima lettera
+            city[0] = toupper(city[0]); 
             if (r_type == 't') printf("%s: Temperatura = %.1f°C\n", city, val);
             else if (r_type == 'h') printf("%s: Umidità = %.1f%%\n", city, val);
             else if (r_type == 'w') printf("%s: Vento = %.1f km/h\n", city, val);

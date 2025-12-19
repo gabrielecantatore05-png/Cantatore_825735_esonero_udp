@@ -1,5 +1,3 @@
-
-
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
@@ -11,7 +9,7 @@
 #ifdef _WIN32
     #include <winsock2.h>
     #include <ws2tcpip.h>
-    #pragma (lib, "ws2_32.lib")
+    #pragma comment(lib, "ws2_32.lib")
     #define CLOSE_SOCKET(s) closesocket(s)
 #else
     #include <sys/socket.h>
@@ -28,16 +26,16 @@
 #define DEFAULT_PORT 56700
 #define MAX_CITY_LEN 64
 
-struct request {
+typedef struct  {
     char type;
     char city[MAX_CITY_LEN];
-};
+} request ;
 
-struct response {
+ typedef struct  {
     unsigned int status;
     char type;
     float value;
-};
+}response;
 
 
 static inline void init_net() {
@@ -47,3 +45,7 @@ static inline void init_net() {
 }
 
 #endif
+
+
+
+
