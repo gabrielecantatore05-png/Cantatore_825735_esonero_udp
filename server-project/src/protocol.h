@@ -1,38 +1,47 @@
-/*
- * protocol.h
- *
- * Shared header file for UDP client and server
- * Contains protocol definitions, data structures, constants and function prototypes
- */
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
 
-#ifndef PROTOCOL_H_
-#define PROTOCOL_H_
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
-#include <stdint.h>
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
+    #define CLOSE_SOCKET(s) closesocket(s)
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <netdb.h>
+    #include <unistd.h>
+    #define SOCKET int
+    #define INVALID_SOCKET -1
+    #define SOCKET_ERROR -1
+    #define CLOSE_SOCKET(s) close(s)
+#endif
 
-/*
- * ============================================================================
- * PROTOCOL CONSTANTS
- * ============================================================================
- */
+#define DEFAULT_PORT 56700
+#define MAX_CITY_LEN 64
 
-// #define ...
+typedef struct  {
+    char type;
+    char city[MAX_CITY_LEN];
+} request ;
 
-/*
- * ============================================================================
- * PROTOCOL DATA STRUCTURES
- * ============================================================================
- */
+ typedef struct  {
+    unsigned int status;
+    char type;
+    float value;
+}response;
 
-// Weather request and response structures 
+// Inizializzazione Cross-platform
+static inline void init_net() {
+#ifdef _WIN32
+    WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
+#endif
+}
 
-/*
- * ============================================================================
- * FUNCTION PROTOTYPES
- * ============================================================================
- */
-
-// Add here the signatures of the functions you implement
-
-
-#endif /* PROTOCOL_H_ */
+#endif
