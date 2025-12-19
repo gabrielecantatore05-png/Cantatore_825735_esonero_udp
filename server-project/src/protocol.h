@@ -37,7 +37,7 @@ typedef struct  {
     float value;
 }response;
 
-// Inizializzazione Cross-platform
+
 static inline void init_net() {
 #ifdef _WIN32
     WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);

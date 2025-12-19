@@ -21,7 +21,7 @@
 
 #define NO_ERROR 0
 #define BUFFMAX 512
-#define PORT 56700 // Porta di default come da specifica
+#define PORT 56700 
 #define MAX_CITY_LEN 64
 
 
