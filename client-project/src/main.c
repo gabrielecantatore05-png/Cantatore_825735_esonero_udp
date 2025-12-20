@@ -2,7 +2,6 @@
     #include <winsock2.h>
     #include <ws2tcpip.h>
     #pragma comment(lib, "ws2_32.lib")
-    #define closesocket close
 #else
     #include <string.h>
     #include <unistd.h>
@@ -18,15 +17,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <ctype.h>
-#include "protocol.h"
 
-
-#define BUFFMAX 255
 #define MAX_CITY_LEN 64
-
-
+#define DEFAULT_PORT 56700
+#define DEFAULT_SERVER "localhost"
 
 void clearwinsock() {
 #if defined _WIN32
@@ -34,68 +29,79 @@ void clearwinsock() {
 #endif
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
 #if defined _WIN32
     WSADATA wsa_data;
     if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
         printf("Error at WSAStartup()\n");
-        return 0;
+        return -1;
     }
 #endif
 
-    
-    char input_buffer[BUFFMAX];
-    memset(input_buffer, 0, BUFFMAX);
-    printf("Inserire server e porta (formato servername:port): ");
-    fgets(input_buffer, BUFFMAX, stdin);
+    char *server_name = DEFAULT_SERVER;
+    int port = DEFAULT_PORT;
+    char *req_arg = NULL;
 
-    char *name = strtok(input_buffer, ":\n");
-    char *port_str = strtok(NULL, ":\n");
-    if (name == NULL || port_str == NULL) {
-        printf("Formato non valido.\n");
-        clearwinsock();
-        return -1;
+    // 1. Parsing argomenti a riga di comando
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-s") == 0 && i + 1 < argc) server_name = argv[++i];
+        else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) port = atoi(argv[++i]);
+        else if (strcmp(argv[i], "-r") == 0 && i + 1 < argc) req_arg = argv[++i];
     }
-    int port = atoi(port_str);
 
-    struct hostent *host = gethostbyname(name);
-    if (host == NULL) {
-        printf("Errore risoluzione host.\n");
+    if (req_arg == NULL) {
+        fprintf(stderr, "Errore: specificare una richiesta con -r \"tipo citta'\"\n");
         clearwinsock();
         return -1;
     }
 
-    
-    struct in_addr addr = *(struct in_addr *)host->h_addr;
-    char *ip_str = inet_ntoa(addr);
-    struct hostent *rev_host = gethostbyaddr((const char*)&addr, sizeof(addr), AF_INET);
-    char *canonical_name = (rev_host) ? rev_host->h_name : name;
-
-   
-    printf("Inserire la richiesta meteo (formato \"tipo citta'\", es: t bari): ");
-    char req_buffer[BUFFMAX];
-    fgets(req_buffer, BUFFMAX, stdin);
-    req_buffer[strcspn(req_buffer, "\n")] = 0; 
-
-    char type = req_buffer[0];
-    char *city_part = strchr(req_buffer, ' ');
-    if (city_part == NULL || (city_part - req_buffer) != 1) {
-        printf("Errore: il primo token deve essere un singolo carattere.\n");
+    // 2. Parsing della stringa di richiesta (-r)
+    if (strchr(req_arg, '\t') != NULL) {
+        fprintf(stderr, "Errore: tabulazioni non ammesse.\n");
         clearwinsock();
         return -1;
     }
-    char *city = city_part + 1;
-    while(isspace(*city)) city++; 
+
+    char type = req_arg[0];
+    if (req_arg[1] != ' ' && req_arg[1] != '\0') {
+        fprintf(stderr, "Errore: il primo token deve essere un singolo carattere.\n");
+        clearwinsock();
+        return -1;
+    }
+
+    char *city = strchr(req_arg, ' ');
+    if (city == NULL) {
+        fprintf(stderr, "Errore: formato richiesta non valido.\n");
+        clearwinsock();
+        return -1;
+    }
+    while (*city == ' ') city++; // Salta spazi extra
+
     if (strlen(city) >= MAX_CITY_LEN) {
-        printf("Errore: nome città troppo lungo.\n");
+        fprintf(stderr, "Errore: nome città troppo lungo.\n");
         clearwinsock();
         return -1;
     }
 
-    
-    int my_socket;
-    if ((my_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
-        printf("Errore creazione socket\n");
+    // 3. Risoluzione DNS e Reverse Lookup
+    struct hostent *host = gethostbyname(server_name);
+    if (host == NULL) {
+        fprintf(stderr, "Errore risoluzione host.\n");
+        clearwinsock();
+        return -1;
+    }
+
+    struct in_addr addr = *(struct in_addr *)host->h_addr;
+    char ip_str[INET_ADDRSTRLEN];
+    strcpy(ip_str, inet_ntoa(addr));
+
+    struct hostent *rev_host = gethostbyaddr((const char*)&addr, sizeof(addr), AF_INET);
+    char *canonical_name = (rev_host) ? rev_host->h_name : server_name;
+
+    // 4. Creazione Socket UDP
+    SOCKET my_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (my_socket == INVALID_SOCKET) {
+        fprintf(stderr, "Errore creazione socket\n");
         clearwinsock();
         return -1;
     }
@@ -106,21 +112,30 @@ int main(void) {
     server_address.sin_port = htons(port);
     server_address.sin_addr = addr;
 
-    
+    // 5. Serializzazione Manuale Richiesta
+    // Formato buffer: [char type] [64 bytes city inclusi \0]
     char send_buf[1 + MAX_CITY_LEN];
     memset(send_buf, 0, sizeof(send_buf));
     send_buf[0] = type;
     strncpy(send_buf + 1, city, MAX_CITY_LEN - 1);
 
-    sendto(my_socket, send_buf, 1 + strlen(city) + 1, 0, 
-           (struct sockaddr *)&server_address, sizeof(server_address));
+    if (sendto(my_socket, send_buf, sizeof(send_buf), 0, 
+               (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+        fprintf(stderr, "Errore invio\n");
+        closesocket(my_socket);
+        clearwinsock();
+        return -1;
+    }
 
-    char recv_buf[512];
-    unsigned int srv_size = sizeof(server_address);
-    int n = recvfrom(my_socket, recv_buf, 512, 0, (struct sockaddr *)&server_address, &srv_size);
+    // 6. Ricezione e Deserializzazione Risposta
+    // Formato atteso: [uint32 status] [char type] [uint32 value_bits]
+    char recv_buf[9];
+    struct sockaddr_in from_addr;
+    socklen_t from_size = sizeof(from_addr);
+
+    int n = recvfrom(my_socket, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&from_addr, &from_size);
 
     if (n >= 9) {
-        
         uint32_t net_status, net_val;
         memcpy(&net_status, recv_buf, 4);
         uint32_t status = ntohl(net_status);
@@ -132,12 +147,14 @@ int main(void) {
         float val;
         memcpy(&val, &net_val, 4);
 
-        
         printf("Ricevuto risultato dal server %s (ip %s). ", canonical_name, ip_str);
 
-        if (status == 1) printf("Città non disponibile\n");
-        else if (status == 2) printf("Richiesta non valida\n");
-        else {
+        if (status == 1) {
+            printf("Città non disponibile\n");
+        } else if (status == 2) {
+            printf("Richiesta non valida\n");
+        } else {
+            // Formattazione output come richiesto
             city[0] = toupper(city[0]); 
             if (r_type == 't') printf("%s: Temperatura = %.1f°C\n", city, val);
             else if (r_type == 'h') printf("%s: Umidità = %.1f%%\n", city, val);
